@@ -1,0 +1,19 @@
+### Регистрация нового пользователя
+POST http://localhost:8080/register
+Content-Type: application/json
+
+{
+  "username": "croc",
+  "password": "123",
+  "email": "croc@gmail.com",
+  "role": "user"
+}
+
+### Вход пользователя
+POST http://localhost:8080/login
+Content-Type: application/json
+
+{
+  "username": "azamat",
+  "password": "123"
+}
