@@ -1,11 +1,12 @@
-### Регистрация нового пользователя
-POST http://localhost:8080/register
+### Регистрация нового пользователя (только для админов)
+POST http://localhost:8080/admin/register
 Content-Type: application/json
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo3LCJ1c2VybmFtZSI6ImF6YW1hdCIsInJvbGUiOiJhZG1pbiIsImV4cCI6MTc0NDM1MTIyMCwiaWF0IjoxNzQ0MzUwMzIwfQ.QH7t17rvFjALTNhP0Eg4SxEHgTLiwRtHiOQQ42-2VZs
 
 {
-  "username": "croc",
+  "username": "JGquintel",
   "password": "123",
-  "email": "croc@gmail.com",
+  "email": "JG@gmail.com",
   "role": "user"
 }
 
@@ -16,4 +17,12 @@ Content-Type: application/json
 {
   "username": "azamat",
   "password": "123"
+}
+
+### Обновление токена
+POST http://localhost:8080/refresh
+Content-Type: application/json
+
+{
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo3LCJ1c2VybmFtZSI6ImF6YW1hdCIsInJvbGUiOiJhZG1pbiIsImp0aSI6InY2elF0NWhZR3J3YXBaWmY3OEJsV2c9PSIsImV4cCI6MTc0NDk1NTc5NCwiaWF0IjoxNzQ0MzUwOTk0fQ.UNHT_t7MSmvmvqwMcxfxyAoJoyoqWsynQZvy6lfo86o"
 }

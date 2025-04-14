@@ -12,8 +12,25 @@ type UserHandler struct {
 	userService *service.UserService
 }
 
+type AuthHandler struct {
+	authService *service.AuthService
+}
+
+func NewAuthHandler(authService *service.AuthService) *AuthHandler {
+	return &AuthHandler{authService: authService}
+}
+
 func NewUserHandler(userService *service.UserService) *UserHandler {
 	return &UserHandler{userService: userService}
+}
+
+type LoginRequest struct {
+	Username string `json:"username" binding:"required"`
+	Password string `json:"password" binding:"required"`
+}
+
+type RefreshRequest struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
 }
 
 func (h *UserHandler) Register(c *gin.Context) {
@@ -45,26 +62,46 @@ func (h *UserHandler) Register(c *gin.Context) {
 
 }
 
-func (h *UserHandler) Login(c *gin.Context) {
-	var credentials struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-	}
-
-	if err := c.ShouldBindJSON(&credentials); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный формат данных"})
+func (h *AuthHandler) Login(c *gin.Context) {
+	var req LoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	user, err := h.userService.Login(c.Request.Context(), credentials.Username, credentials.Password)
+	tokenPair, err := h.authService.Login(c, req.Username, req.Password)
 	if err != nil {
-		if err == service.ErrInvalidLogin {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Неверное имя пользователя или пароль"})
-		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка сервера"})
-		}
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, user)
+	c.JSON(http.StatusOK, gin.H{
+		"message":            "Успешный вход",
+		"token":              tokenPair.AccessToken,
+		"refresh_token":      tokenPair.RefreshToken,
+		"expires_in":         tokenPair.ExpiresIn,
+		"refresh_expires_in": tokenPair.RefreshExpiresIn,
+	})
+}
+
+func (h *AuthHandler) RefreshToken(c *gin.Context) {
+	var req RefreshRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	tokenPair, err := h.authService.RefreshToken(c.Request.Context(), req.RefreshToken)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":            "Токен обновлен",
+		"token":              tokenPair.AccessToken,
+		"refresh_token":      tokenPair.RefreshToken,
+		"expires_in":         tokenPair.ExpiresIn,
+		"refresh_expires_in": tokenPair.RefreshExpiresIn,
+	})
 }

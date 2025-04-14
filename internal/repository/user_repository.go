@@ -24,7 +24,6 @@ func (r *UserRepository) Create(ctx context.Context, user *models.User) error {
 		return err
 	}
 
-	// Устанавливаем роль по умолчанию если не указана
 	if user.Role == "" {
 		user.Role = models.RoleUser
 	}
@@ -57,6 +56,22 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*models.
 	err := r.db.QueryRow(ctx,
 		`SELECT id, username, password, email, role, created_at 
 		FROM users WHERE email = $1`, email).
+		Scan(&user.ID, &user.Username, &user.Password, &user.Email, &user.Role, &user.CreatedAt)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return user, nil
+}
+
+func (r *UserRepository) GetByID(ctx context.Context, id int) (*models.User, error) {
+	user := &models.User{}
+	err := r.db.QueryRow(ctx,
+		`SELECT id, username, password, email, role, created_at 
+		FROM users WHERE id = $1`, id).
 		Scan(&user.ID, &user.Username, &user.Password, &user.Email, &user.Role, &user.CreatedAt)
 
 	if err != nil {

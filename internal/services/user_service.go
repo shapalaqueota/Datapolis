@@ -1,6 +1,7 @@
 package service
 
 import (
+	"Datapolis/internal/auth"
 	"Datapolis/internal/models"
 	"Datapolis/internal/repository"
 	"context"
@@ -14,12 +15,19 @@ var (
 	ErrInvalidUserData = errors.New("неверные данные пользователя")
 )
 
+type AuthService struct {
+	userRepo *repository.UserRepository
+}
 type UserService struct {
 	repo *repository.UserRepository
 }
 
 func NewUserService(repo *repository.UserRepository) *UserService {
 	return &UserService{repo: repo}
+}
+
+func NewAuthService(userRepo *repository.UserRepository) *AuthService {
+	return &AuthService{userRepo: userRepo}
 }
 
 func (s *UserService) Register(ctx context.Context, user *models.User) error {
@@ -42,20 +50,48 @@ func (s *UserService) Register(ctx context.Context, user *models.User) error {
 	return s.repo.Create(ctx, user)
 }
 
-func (s *UserService) Login(ctx context.Context, username, password string) (*models.User, error) {
-	user, err := s.repo.GetByUsername(ctx, username)
+func (s *AuthService) Login(ctx context.Context, username, password string) (*auth.TokenPair, error) {
+	user, err := s.userRepo.GetByUsername(ctx, username)
 	if err != nil {
 		return nil, err
 	}
+
 	if user == nil {
-		return nil, ErrInvalidLogin
+		return nil, errors.New("пользователь не найден")
 	}
 
 	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
 	if err != nil {
-		return nil, ErrInvalidLogin
+		return nil, errors.New("неверный пароль")
 	}
 
-	user.Password = ""
-	return user, nil
+	tokenPair, err := auth.GenerateTokenPair(user)
+	if err != nil {
+		return nil, err
+	}
+
+	return tokenPair, nil
+}
+
+func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*auth.TokenPair, error) {
+	claims, err := auth.ValidateRefreshToken(refreshToken)
+	if err != nil {
+		return nil, errors.New("недействительный refresh токен")
+	}
+
+	user, err := s.userRepo.GetByID(ctx, claims.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	if user == nil {
+		return nil, errors.New("пользователь не найден")
+	}
+
+	tokenPair, err := auth.GenerateTokenPair(user)
+	if err != nil {
+		return nil, err
+	}
+
+	return tokenPair, nil
 }
