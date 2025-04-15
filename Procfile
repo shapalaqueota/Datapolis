@@ -1,1 +1,1 @@
-web: bin/Datapolis
+web: ./main

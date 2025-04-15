@@ -6,7 +6,6 @@ import (
 	"Datapolis/internal/repository"
 	"Datapolis/internal/routes"
 	service "Datapolis/internal/services"
-	"log"
 	"os"
 )
 
@@ -22,12 +21,9 @@ func main() {
 
 	router := routes.Router(userHandler, authHandler)
 
-	port := os.Getenv("PORT")
+	port := os.Getenv("PORT") // ← Heroku сам задаёт эту переменную
 	if port == "" {
-		port = "8080"
+		port = "8080" // ← это только для запуска локально
 	}
-
-	if err := router.Run(":" + port); err != nil {
-		log.Fatalf("Ошибка запуска сервера: %v", err)
-	}
+	router.Run(":" + port)
 }
