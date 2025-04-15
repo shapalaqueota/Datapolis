@@ -3,6 +3,7 @@ package handlers
 import (
 	"Datapolis/internal/models"
 	"Datapolis/internal/services"
+	"errors"
 	"github.com/gin-gonic/gin"
 	"log"
 	"net/http"
@@ -44,10 +45,10 @@ func (h *UserHandler) Register(c *gin.Context) {
 
 	err := h.userService.Register(c.Request.Context(), &user)
 	if err != nil {
-		switch err {
-		case service.ErrUserExists:
+		switch {
+		case errors.Is(err, service.ErrUserExists):
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
-		case service.ErrInvalidUserData:
+		case errors.Is(err, service.ErrInvalidUserData):
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		default:
 			log.Printf("Неизвестная ошибка при регистрации пользователя: %v", err)

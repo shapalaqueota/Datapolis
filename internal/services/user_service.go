@@ -11,7 +11,6 @@ import (
 
 var (
 	ErrUserExists      = errors.New("пользователь с таким именем или email уже существует")
-	ErrInvalidLogin    = errors.New("неверное имя пользователя или пароль")
 	ErrInvalidUserData = errors.New("неверные данные пользователя")
 )
 
