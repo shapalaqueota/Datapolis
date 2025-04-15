@@ -15,24 +15,20 @@ var Pool *pgxpool.Pool
 func ConnectDB() {
 	var err error
 
-	// Игнорируем ошибку загрузки .env файла в продакшене
 	_ = godotenv.Load(".env")
 
-	// Получаем URL для подключения к базе данных
 	databaseUrl := os.Getenv("DATABASE_URL")
 	if databaseUrl == "" {
 		log.Println("DATABASE_URL не установлен")
 		return
 	}
 
-	// Парсим строку подключения
 	config, err := pgxpool.ParseConfig(databaseUrl)
 	if err != nil {
 		log.Printf("Ошибка при разборе URL базы данных: %v\n", err)
 		return
 	}
 
-	// Настраиваем SSL для Heroku/AWS
 	config.ConnConfig.TLSConfig = &tls.Config{
 		InsecureSkipVerify: true, // В производственной среде лучше true заменить на false
 	}
