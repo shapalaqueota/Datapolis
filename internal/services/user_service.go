@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"golang.org/x/crypto/bcrypt"
+	"time"
 )
 
 var (
@@ -87,10 +88,20 @@ func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*a
 		return nil, errors.New("пользователь не найден")
 	}
 
-	tokenPair, err := auth.GenerateTokenPair(user)
+	accessToken, expiresIn, err := auth.GenerateAccessToken(user)
 	if err != nil {
 		return nil, err
 	}
 
-	return tokenPair, nil
+	refreshExpiresIn := int64(time.Until(claims.ExpiresAt.Time).Seconds())
+	if refreshExpiresIn < 0 {
+		refreshExpiresIn = 0 // На случай, если токен почти истек
+	}
+
+	return &auth.TokenPair{
+		AccessToken:      accessToken,
+		RefreshToken:     refreshToken,
+		ExpiresIn:        expiresIn,
+		RefreshExpiresIn: refreshExpiresIn,
+	}, nil
 }

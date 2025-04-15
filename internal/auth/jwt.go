@@ -56,6 +56,10 @@ func GenerateTokenPair(user *models.User) (*TokenPair, error) {
 	}, nil
 }
 
+func GenerateAccessToken(user *models.User) (string, int64, error) {
+	return generateAccessToken(user)
+}
+
 func generateAccessToken(user *models.User) (string, int64, error) {
 	secret := []byte(os.Getenv("JWT_SECRET"))
 
