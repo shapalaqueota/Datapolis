@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
@@ -24,15 +25,17 @@ func ConnectDB() {
 		return
 	}
 
-	// Для Heroku может потребоваться SSL
+	// Парсим строку подключения
 	config, err := pgxpool.ParseConfig(databaseUrl)
 	if err != nil {
 		log.Printf("Ошибка при разборе URL базы данных: %v\n", err)
 		return
 	}
 
-	// На Heroku может требоваться настройка SSL
-	config.ConnConfig.TLSConfig = nil
+	// Настраиваем SSL для Heroku/AWS
+	config.ConnConfig.TLSConfig = &tls.Config{
+		InsecureSkipVerify: true, // В производственной среде лучше true заменить на false
+	}
 
 	Pool, err = pgxpool.NewWithConfig(context.Background(), config)
 	if err != nil {
