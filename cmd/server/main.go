@@ -7,6 +7,7 @@ import (
 	"Datapolis/internal/routes"
 	service "Datapolis/internal/services"
 	"log"
+	"os"
 )
 
 func main() {
@@ -21,7 +22,12 @@ func main() {
 
 	router := routes.Router(userHandler, authHandler)
 
-	if err := router.Run(":8080"); err != nil {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	if err := router.Run(":" + port); err != nil {
 		log.Fatalf("Ошибка запуска сервера: %v", err)
 	}
 }
