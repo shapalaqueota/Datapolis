@@ -105,3 +105,26 @@ func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*a
 		RefreshExpiresIn: refreshExpiresIn,
 	}, nil
 }
+
+func (s *UserService) GetUserByID(ctx context.Context, id int) (*models.User, error) {
+	user, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, errors.New("пользователь не найден")
+	}
+	return user, nil
+}
+
+// getAllUsers получает всех пользователей
+func (s *UserService) GetAllUsers(ctx context.Context) ([]*models.User, error) {
+	users, err := s.repo.GetAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if users == nil {
+		return nil, errors.New("пользователи не найдены")
+	}
+	return users, nil
+}

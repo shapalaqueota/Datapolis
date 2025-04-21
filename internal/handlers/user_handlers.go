@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"log"
 	"net/http"
+	"strconv"
 )
 
 type UserHandler struct {
@@ -105,4 +106,38 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 		"expires_in":         tokenPair.ExpiresIn,
 		"refresh_expires_in": tokenPair.RefreshExpiresIn,
 	})
+}
+
+func (h *UserHandler) GetUser(c *gin.Context) {
+	// Получаем ID пользователя из URL параметров
+	userID, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный ID пользователя"})
+		return
+	}
+
+	user, err := h.userService.GetUserByID(c.Request.Context(), userID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	user.Password = ""
+	c.JSON(http.StatusOK, user)
+}
+
+// GetUsers получает список всех пользователей
+func (h *UserHandler) GetUsers(c *gin.Context) {
+	// Получаем всех пользователей из сервиса
+	users, err := h.userService.GetAllUsers(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	for _, user := range users {
+		user.Password = ""
+	}
+
+	c.JSON(http.StatusOK, users)
 }

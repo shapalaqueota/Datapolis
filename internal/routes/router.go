@@ -8,7 +8,11 @@ import (
 	"time"
 )
 
-func Router(userHandler *handlers.UserHandler, authHandler *handlers.AuthHandler) *gin.Engine {
+func Router(
+	userHandler *handlers.UserHandler,
+	authHandler *handlers.AuthHandler,
+	geoJSONHandler *handlers.GeoJSONHandler) *gin.Engine {
+
 	router := gin.Default()
 
 	router.Use(cors.New(cors.Config{
@@ -29,10 +33,42 @@ func Router(userHandler *handlers.UserHandler, authHandler *handlers.AuthHandler
 		protected.GET("/renovation")
 	}
 
+	geojson := protected.Group("/geojson")
+	{
+		// Коллекции - только чтение для обычных пользователей
+		collections := geojson.Group("/collections")
+		{
+			collections.GET("", geoJSONHandler.GetCollections)
+			collections.GET("/:id", geoJSONHandler.GetCollection)
+			collections.GET("/:id/export", geoJSONHandler.ExportGeoJSON)
+			collections.GET("/:id/features", geoJSONHandler.GetFeatures)
+		}
+	}
+
 	admin := protected.Group("/admin")
 	admin.Use(middleware.AuthMiddleware(), middleware.AdminMiddleware())
 	{
 		admin.POST("/register", userHandler.Register)
+		admin.GET("/users", userHandler.GetUsers)
+		admin.GET("/users/:id", userHandler.GetUser)
+
+		adminGeoJSON := admin.Group("/geojson")
+		{
+			// Коллекции - администраторы могут создавать и удалять
+			adminCollections := adminGeoJSON.Group("/collections")
+			{
+				adminCollections.POST("", geoJSONHandler.UploadGeoJSON)
+				adminCollections.DELETE("/:id", geoJSONHandler.DeleteCollection)
+				adminCollections.POST("/:id/features", geoJSONHandler.AddFeature)
+			}
+
+			// Фичи - администраторы могут обновлять и удалять
+			adminFeatures := adminGeoJSON.Group("/features")
+			{
+				adminFeatures.PUT("/:id", geoJSONHandler.UpdateFeature)
+				adminFeatures.DELETE("/:id", geoJSONHandler.DeleteFeature)
+			}
+		}
 	}
 
 	return router
