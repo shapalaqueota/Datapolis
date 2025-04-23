@@ -4,149 +4,100 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"strconv"
 
 	"Datapolis/internal/models"
 	"Datapolis/internal/repository"
 )
 
-type GeoJSONService struct {
-	repo *repository.GeoJSONRepository
+const srid4326 = 4326
+
+type GeoService struct {
+	repo *repository.GeoRepository
 }
 
-func NewGeoJSONService(repo *repository.GeoJSONRepository) *GeoJSONService {
-	return &GeoJSONService{repo: repo}
-}
-
-// ImportGeoJSON импортирует GeoJSON файл в БД
-func (s *GeoJSONService) ImportGeoJSON(ctx context.Context, reader io.Reader, name, description string, userID int) (*models.GeoJSONCollection, error) {
-	var geoJSON struct {
-		Type     string            `json:"type"`
-		Name     string            `json:"name"`
-		CRS      json.RawMessage   `json:"crs"`
-		Features []json.RawMessage `json:"features"`
-	}
-
-	data, err := io.ReadAll(reader)
-	if err != nil {
-		return nil, err
-	}
-
-	if err = json.Unmarshal(data, &geoJSON); err != nil {
-		return nil, err
-	}
-
-	// Создаем коллекцию
-	collection := &models.GeoJSONCollection{
-		Name:        name,
-		Description: description,
-		Type:        geoJSON.Type,
-		CRS:         models.JSONData(geoJSON.CRS),
-		UserID:      userID,
-	}
-
-	if err = s.repo.CreateCollection(ctx, collection); err != nil {
-		return nil, err
-	}
-
-	// Добавляем фичи
-	for _, featureData := range geoJSON.Features {
-		var feature struct {
-			Type       string          `json:"type"`
-			Properties json.RawMessage `json:"properties"`
-			Geometry   json.RawMessage `json:"geometry"`
-		}
-
-		if err = json.Unmarshal(featureData, &feature); err != nil {
-			continue
-		}
-
-		geoFeature := &models.GeoJSONFeature{
-			Type:         feature.Type,
-			Properties:   models.JSONData(feature.Properties),
-			Geometry:     models.JSONData(feature.Geometry),
-			CollectionID: collection.ID,
-		}
-
-		if err = s.repo.AddFeature(ctx, geoFeature); err != nil {
-			continue
-		}
-	}
-
-	return collection, nil
-}
+func NewGeoService(r *repository.GeoRepository) *GeoService { return &GeoService{repo: r} }
 
 // GetCollection получает коллекцию по ID
-func (s *GeoJSONService) GetCollection(ctx context.Context, id int) (*models.GeoJSONCollection, error) {
+func (s *GeoService) GetCollection(ctx context.Context, id int) (*models.GeoJSONCollection, error) {
 	return s.repo.GetCollectionByID(ctx, id)
 }
 
-// GetCollectionsByUser получает все коллекции пользователя
-func (s *GeoJSONService) GetCollectionsByUser(ctx context.Context, userID int) ([]*models.GeoJSONCollection, error) {
-	return s.repo.GetCollectionsByUserID(ctx, userID)
-}
-
-// ExportGeoJSON экспортирует коллекцию и все её фичи в GeoJSON формат
-func (s *GeoJSONService) ExportGeoJSON(ctx context.Context, collectionID int) ([]byte, error) {
-	collection, err := s.repo.GetCollectionByID(ctx, collectionID)
+func (s *GeoService) ExportGeoJSON(ctx context.Context, collectionID int) ([]byte, error) {
+	col, err := s.repo.GetCollectionByID(ctx, collectionID)
 	if err != nil {
 		return nil, err
 	}
-	if collection == nil {
-		return nil, errors.New("коллекция не найдена")
+	if col == nil {
+		return nil, errors.New("collection not found")
 	}
 
-	features, err := s.repo.GetFeaturesByCollectionID(ctx, collectionID)
+	feats, err := s.repo.FeaturesByCollection(ctx, collectionID)
 	if err != nil {
 		return nil, err
 	}
 
-	result := map[string]interface{}{
-		"type": collection.Type,
-		"name": collection.Name,
-		"crs":  json.RawMessage(collection.CRS),
+	out := map[string]any{
+		"type": "FeatureCollection",
+		"name": col.Name,
+		"crs": map[string]any{
+			"type":       "name",
+			"properties": map[string]any{"name": "EPSG:" + strconv.Itoa(col.SRID)},
+		},
 	}
-
-	featureList := make([]json.RawMessage, 0, len(features))
-	for _, feature := range features {
-		featureMap := map[string]interface{}{
-			"type":       feature.Type,
-			"properties": json.RawMessage(feature.Properties),
-			"geometry":   json.RawMessage(feature.Geometry),
-		}
-		featureJSON, err := json.Marshal(featureMap)
-		if err != nil {
-			continue
-		}
-		featureList = append(featureList, featureJSON)
+	flist := make([]map[string]any, 0, len(feats))
+	for _, f := range feats {
+		flist = append(flist, map[string]any{
+			"type":       "Feature",
+			"properties": json.RawMessage(f.Properties),
+			"geometry":   json.RawMessage(f.Geometry),
+		})
 	}
-
-	result["features"] = featureList
-	return json.Marshal(result)
+	out["features"] = flist
+	return json.Marshal(out)
 }
 
 // DeleteCollection удаляет коллекцию
-func (s *GeoJSONService) DeleteCollection(ctx context.Context, id, userID int) error {
-	return s.repo.DeleteCollection(ctx, id, userID)
+func (s *GeoService) DeleteCollection(ctx context.Context, collectionID, userID int) error {
+	return s.repo.DeleteCollection(ctx, collectionID, userID)
 }
 
 // GetFeatures получает все фичи коллекции
-func (s *GeoJSONService) GetFeatures(ctx context.Context, collectionID int) ([]*models.GeoJSONFeature, error) {
+func (s *GeoService) GetFeatures(ctx context.Context, collectionID int) ([]*models.GeoJSONFeature, error) {
 	return s.repo.GetFeaturesByCollectionID(ctx, collectionID)
 }
 
-// AddFeature добавляет новую фичу в коллекцию
-func (s *GeoJSONService) AddFeature(ctx context.Context, feature *models.GeoJSONFeature) error {
-	return s.repo.AddFeature(ctx, feature)
+// AddSingleFeature добавляет новую фичу в коллекцию
+func (s *GeoService) AddSingleFeature(
+	ctx context.Context,
+	feature *models.GeoJSONFeature,
+) error {
+	// проверяем существование коллекции и получаем её SRID
+	col, err := s.repo.GetCollectionByID(ctx, feature.CollectionID)
+	if err != nil {
+		return err
+	}
+	if col == nil {
+		return fmt.Errorf("collection %d not found", feature.CollectionID)
+	}
+	// вызываем репозиторий
+	return s.repo.AddSingleFeature(ctx, feature, col.SRID)
 }
 
-// UpdateFeature обновляет фичу
-func (s *GeoJSONService) UpdateFeature(ctx context.Context, feature *models.GeoJSONFeature) error {
-	return s.repo.UpdateFeature(ctx, feature)
+// UpdateFeature обновляет фичу в коллекции
+func (s *GeoService) UpdateFeature(ctx context.Context, feature *models.GeoJSONFeature) error {
+	if feature.ID == 0 {
+		return errors.New("ID фичи не установлен")
+	}
+	if feature.CollectionID == 0 {
+		return errors.New("ID коллекции не установлен")
+	}
+	return s.repo.UpdateFeature(ctx, feature, srid4326)
 }
 
-// DeleteFeature удаляет фичу
-func (s *GeoJSONService) DeleteFeature(ctx context.Context, id int) error {
+func (s *GeoService) DeleteFeature(ctx context.Context, id int) error {
 	feature, err := s.repo.GetFeatureByID(ctx, id)
 	if err != nil {
 		return err
@@ -154,6 +105,66 @@ func (s *GeoJSONService) DeleteFeature(ctx context.Context, id int) error {
 	if feature == nil {
 		return errors.New("фича не найдена")
 	}
+	return s.repo.DeleteFeature(ctx, id)
+}
 
-	return s.repo.DeleteFeature(ctx, id, feature.CollectionID)
+func (s *GeoService) GetAllCollections(ctx context.Context) ([]*models.GeoJSONCollection, error) {
+	return s.repo.GetCollections(ctx)
+}
+
+// services/geojson_service.go
+
+func (s *GeoService) ImportGeoJSONBulk(
+	ctx context.Context,
+	reader io.Reader,
+	name, description string,
+	userID int,
+) (*models.GeoJSONCollection, error) {
+	// 1) создаём коллекцию как раньше
+	col := &models.GeoJSONCollection{
+		Name:        name,
+		Description: description,
+		SRID:        4326, // или другой SRID по-умолчанию
+		UserID:      userID,
+	}
+	if err := s.repo.CreateCollection(ctx, col); err != nil {
+		return nil, err
+	}
+
+	// 2) парсим весь GeoJSON из reader
+	raw, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, err
+	}
+	var top struct {
+		Features []struct {
+			Properties json.RawMessage `json:"properties"`
+			Geometry   json.RawMessage `json:"geometry"`
+		} `json:"features"`
+	}
+	if err := json.Unmarshal(raw, &top); err != nil {
+		return nil, err
+	}
+
+	// 3) готовим slice моделей
+	feats := make([]*models.GeoJSONFeature, len(top.Features))
+	for i, f := range top.Features {
+		feats[i] = &models.GeoJSONFeature{
+			Properties:   models.JSONData(f.Properties), // json.RawMessage
+			Geometry:     models.JSONData(f.Geometry),   // json.RawMessage
+			CollectionID: col.ID,
+		}
+	}
+
+	// 4) bulk‑вставка через batch
+	if err := s.repo.AddFeaturesBulk(ctx, feats, col.SRID); err != nil {
+		return nil, err
+	}
+
+	return col, nil
+}
+
+// GetFeatureByID получает фичу по ID
+func (s *GeoService) GetFeatureByID(ctx context.Context, id int) (*models.GeoJSONFeature, error) {
+	return s.repo.GetFeatureByID(ctx, id)
 }

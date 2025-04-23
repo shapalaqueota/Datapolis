@@ -7,35 +7,29 @@ import (
 	"time"
 )
 
-// GeoJSONCollection представляет коллекцию GeoJSON данных
+// GeoJSONCollection holds high‑level metadata only. Geometry lives in geo_features.
 type GeoJSONCollection struct {
-	ID          int       `json:"id" gorm:"primaryKey"`
-	Name        string    `json:"name" gorm:"not null"`
+	ID          int       `json:"id"`
+	Name        string    `json:"name"`
 	Description string    `json:"description"`
-	Type        string    `json:"type" gorm:"default:'FeatureCollection'"`
-	CRS         JSONData  `json:"crs" gorm:"type:jsonb"`
-	CreatedAt   time.Time `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt   time.Time `json:"updated_at" gorm:"autoUpdateTime"`
-	UserID      int       `json:"user_id" gorm:"not null"`
-	User        User      `json:"user" gorm:"foreignKey:UserID"`
+	SRID        int       `json:"srid"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	UserID      int       `json:"user_id"`
 }
 
-// GeoJSONFeature представляет отдельный объект геоданных
 type GeoJSONFeature struct {
-	ID           int               `json:"id" gorm:"primaryKey"`
-	Type         string            `json:"type" gorm:"default:'Feature'"`
-	Properties   JSONData          `json:"properties" gorm:"type:jsonb"`
-	Geometry     JSONData          `json:"geometry" gorm:"type:jsonb"`
-	CollectionID int               `json:"collection_id" gorm:"not null"`
-	Collection   GeoJSONCollection `json:"-" gorm:"foreignKey:CollectionID"`
-	CreatedAt    time.Time         `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt    time.Time         `json:"updated_at" gorm:"autoUpdateTime"`
+	ID           int       `json:"id"`
+	Type         string    `json:"type"`
+	Properties   JSONData  `json:"properties"`
+	Geometry     JSONData  `json:"geometry"`
+	CollectionID int       `json:"collection_id"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
-// JSONData представляет тип для хранения JSON данных
 type JSONData json.RawMessage
 
-// Value реализует интерфейс driver.Valuer
 func (j JSONData) Value() (driver.Value, error) {
 	if len(j) == 0 {
 		return nil, nil
@@ -43,40 +37,30 @@ func (j JSONData) Value() (driver.Value, error) {
 	return string(j), nil
 }
 
-// Scan реализует интерфейс sql.Scanner
-func (j *JSONData) Scan(value interface{}) error {
-	if value == nil {
+func (j *JSONData) Scan(val interface{}) error {
+	if val == nil {
 		*j = nil
 		return nil
 	}
-
-	var bytes []byte
-	switch v := value.(type) {
+	switch v := val.(type) {
 	case []byte:
-		bytes = v
+		*j = JSONData(v)
 	case string:
-		bytes = []byte(v)
+		*j = JSONData([]byte(v))
 	default:
-		return errors.New("тип не может быть преобразован в JSONData")
+		return errors.New("unsupported type for JSONData")
 	}
-
-	*j = JSONData(bytes)
 	return nil
 }
 
-// MarshalJSON реализует интерфейс json.Marshaler
+func (j *JSONData) UnmarshalJSON(data []byte) error {
+	*j = JSONData(data)
+	return nil
+}
+
 func (j JSONData) MarshalJSON() ([]byte, error) {
 	if len(j) == 0 {
 		return []byte("null"), nil
 	}
-	return j, nil
-}
-
-// UnmarshalJSON реализует интерфейс json.Unmarshaler
-func (j *JSONData) UnmarshalJSON(data []byte) error {
-	if j == nil {
-		return errors.New("JSONData: UnmarshalJSON на nil указателе")
-	}
-	*j = data
-	return nil
+	return []byte(j), nil
 }

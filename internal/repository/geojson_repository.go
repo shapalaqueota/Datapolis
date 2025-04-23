@@ -10,233 +10,315 @@ import (
 	"Datapolis/internal/models"
 )
 
-type GeoJSONRepository struct {
+const srid4326 = 4326
+
+type GeoRepository struct {
 	db *pgxpool.Pool
 }
 
-func NewGeoJSONRepository(db *pgxpool.Pool) *GeoJSONRepository {
-	return &GeoJSONRepository{db: db}
+func NewGeoRepository(db *pgxpool.Pool) *GeoRepository {
+	return &GeoRepository{db: db}
 }
 
 // CreateCollection создает новую коллекцию GeoJSON
-func (r *GeoJSONRepository) CreateCollection(ctx context.Context, collection *models.GeoJSONCollection) error {
-	crsData, err := json.Marshal(collection.CRS)
-	if err != nil {
-		return err
-	}
-
-	err = r.db.QueryRow(ctx,
-		`INSERT INTO geo_json_collections (name, description, type, crs, user_id) 
-		VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at, updated_at`,
-		collection.Name, collection.Description, collection.Type, crsData, collection.UserID).
-		Scan(&collection.ID, &collection.CreatedAt, &collection.UpdatedAt)
-	return err
+func (r *GeoRepository) CreateCollection(ctx context.Context, c *models.GeoJSONCollection) error {
+	return r.db.QueryRow(ctx,
+		`INSERT INTO geo_collections (name, description, srid, user_id)
+         VALUES ($1,$2,$3,$4) RETURNING id, created_at, updated_at`,
+		c.Name, c.Description, c.SRID, c.UserID,
+	).Scan(&c.ID, &c.CreatedAt, &c.UpdatedAt)
 }
 
-// GetCollectionByID получает коллекцию по ID
-func (r *GeoJSONRepository) GetCollectionByID(ctx context.Context, id int) (*models.GeoJSONCollection, error) {
-	collection := &models.GeoJSONCollection{}
-	var crsData []byte
+func (r *GeoRepository) GetCollections(
+	ctx context.Context,
+) ([]*models.GeoJSONCollection, error) {
 
-	err := r.db.QueryRow(ctx,
-		`SELECT id, name, description, type, crs, user_id, created_at, updated_at 
-		FROM geo_json_collections WHERE id = $1`, id).
-		Scan(&collection.ID, &collection.Name, &collection.Description, &collection.Type,
-			&crsData, &collection.UserID, &collection.CreatedAt, &collection.UpdatedAt)
+	const q = `
+	SELECT id, name, description, srid,
+	       user_id, created_at, updated_at
+	FROM   geo_collections
+	ORDER BY created_at DESC;`
 
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	collection.CRS = models.JSONData(crsData)
-	return collection, nil
-}
-
-// GetCollectionsByUserID получает все коллекции пользователя
-func (r *GeoJSONRepository) GetCollectionsByUserID(ctx context.Context, userID int) ([]*models.GeoJSONCollection, error) {
-	rows, err := r.db.Query(ctx,
-		`SELECT id, name, description, type, crs, user_id, created_at, updated_at 
-		FROM geo_json_collections WHERE user_id = $1 ORDER BY created_at DESC`, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var collections []*models.GeoJSONCollection
-	for rows.Next() {
-		collection := &models.GeoJSONCollection{}
-		var crsData []byte
-
-		err := rows.Scan(&collection.ID, &collection.Name, &collection.Description, &collection.Type,
-			&crsData, &collection.UserID, &collection.CreatedAt, &collection.UpdatedAt)
-		if err != nil {
-			return nil, err
-		}
-
-		collection.CRS = models.JSONData(crsData)
-		collections = append(collections, collection)
-	}
-
-	if err = rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return collections, nil
-}
-
-// UpdateCollection обновляет коллекцию
-func (r *GeoJSONRepository) UpdateCollection(ctx context.Context, collection *models.GeoJSONCollection) error {
-	crsData, err := json.Marshal(collection.CRS)
-	if err != nil {
-		return err
-	}
-
-	result, err := r.db.Exec(ctx,
-		`UPDATE geo_json_collections SET name = $1, description = $2, type = $3, crs = $4, updated_at = NOW() 
-		WHERE id = $5 AND user_id = $6`,
-		collection.Name, collection.Description, collection.Type, crsData, collection.ID, collection.UserID)
-	if err != nil {
-		return err
-	}
-
-	if result.RowsAffected() == 0 {
-		return errors.New("коллекция не найдена или нет прав на редактирование")
-	}
-
-	return nil
+	return r.scanCollections(ctx, q)
 }
 
 // DeleteCollection удаляет коллекцию
-func (r *GeoJSONRepository) DeleteCollection(ctx context.Context, id int, userID int) error {
-	result, err := r.db.Exec(ctx,
-		`DELETE FROM geo_json_collections WHERE id = $1 AND user_id = $2`, id, userID)
+func (r *GeoRepository) DeleteCollection(ctx context.Context, id, userID int) error {
+	cmd, err := r.db.Exec(ctx, `DELETE FROM geo_collections WHERE id=$1 AND user_id=$2`, id, userID)
 	if err != nil {
 		return err
 	}
-
-	if result.RowsAffected() == 0 {
-		return errors.New("коллекция не найдена или нет прав на удаление")
+	if cmd.RowsAffected() == 0 {
+		return errors.New("collection not found or not owned by user")
 	}
-
 	return nil
 }
 
-// AddFeature добавляет новую фичу в коллекцию
-func (r *GeoJSONRepository) AddFeature(ctx context.Context, feature *models.GeoJSONFeature) error {
-	propertiesData, err := json.Marshal(feature.Properties)
-	if err != nil {
-		return err
-	}
-
-	geometryData, err := json.Marshal(feature.Geometry)
-	if err != nil {
-		return err
-	}
-
-	err = r.db.QueryRow(ctx,
-		`INSERT INTO geo_json_features (type, properties, geometry, collection_id) 
-		VALUES ($1, $2, $3, $4) RETURNING id, created_at, updated_at`,
-		feature.Type, propertiesData, geometryData, feature.CollectionID).
-		Scan(&feature.ID, &feature.CreatedAt, &feature.UpdatedAt)
-	return err
-}
-
-// GetFeaturesByCollectionID получает все фичи коллекции
-func (r *GeoJSONRepository) GetFeaturesByCollectionID(ctx context.Context, collectionID int) ([]*models.GeoJSONFeature, error) {
+func (r *GeoRepository) FeaturesByCollection(ctx context.Context, collectionID int) ([]*models.GeoJSONFeature, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT id, type, properties, geometry, collection_id, created_at, updated_at 
-		FROM geo_json_features WHERE collection_id = $1`, collectionID)
+		`SELECT id, properties, ST_AsGeoJSON(geometry)::jsonb AS geometry, collection_id, created_at, updated_at
+           FROM geo_features WHERE collection_id=$1`, collectionID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var features []*models.GeoJSONFeature
+	var res []*models.GeoJSONFeature
 	for rows.Next() {
-		feature := &models.GeoJSONFeature{}
-		var propertiesData, geometryData []byte
-
-		err := rows.Scan(&feature.ID, &feature.Type, &propertiesData, &geometryData,
-			&feature.CollectionID, &feature.CreatedAt, &feature.UpdatedAt)
-		if err != nil {
+		f := &models.GeoJSONFeature{}
+		var props, geom []byte
+		if err := rows.Scan(&f.ID, &props, &geom, &f.CollectionID, &f.CreatedAt, &f.UpdatedAt); err != nil {
 			return nil, err
 		}
-
-		feature.Properties = models.JSONData(propertiesData)
-		feature.Geometry = models.JSONData(geometryData)
-		features = append(features, feature)
+		f.Properties = models.JSONData(props)
+		f.Geometry = models.JSONData(geom)
+		res = append(res, f)
 	}
-
-	if err = rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return features, nil
-}
-
-// UpdateFeature обновляет фичу
-func (r *GeoJSONRepository) UpdateFeature(ctx context.Context, feature *models.GeoJSONFeature) error {
-	propertiesData, err := json.Marshal(feature.Properties)
-	if err != nil {
-		return err
-	}
-
-	geometryData, err := json.Marshal(feature.Geometry)
-	if err != nil {
-		return err
-	}
-
-	result, err := r.db.Exec(ctx,
-		`UPDATE geo_json_features SET type = $1, properties = $2, geometry = $3, updated_at = NOW() 
-		WHERE id = $4 AND collection_id = $5`,
-		feature.Type, propertiesData, geometryData, feature.ID, feature.CollectionID)
-	if err != nil {
-		return err
-	}
-
-	if result.RowsAffected() == 0 {
-		return errors.New("фича не найдена")
-	}
-
-	return nil
+	return res, rows.Err()
 }
 
 // DeleteFeature удаляет фичу
-func (r *GeoJSONRepository) DeleteFeature(ctx context.Context, id int, collectionID int) error {
-	result, err := r.db.Exec(ctx,
-		`DELETE FROM geo_json_features WHERE id = $1 AND collection_id = $2`, id, collectionID)
+func (r *GeoRepository) DeleteFeature(ctx context.Context, id int) error {
+	cmd, err := r.db.Exec(ctx, `DELETE FROM geo_features WHERE id=$1`, id)
 	if err != nil {
 		return err
 	}
+	if cmd.RowsAffected() == 0 {
+		return errors.New("feature not found")
+	}
+	return nil
+}
 
-	if result.RowsAffected() == 0 {
-		return errors.New("фича не найдена")
+func (r *GeoRepository) GetFeaturesByCollectionID(
+	ctx context.Context, collectionID int,
+) ([]*models.GeoJSONFeature, error) {
+
+	rows, err := r.db.Query(ctx, `
+        SELECT id,
+               properties,
+               ST_AsGeoJSON(geometry)::jsonb,
+               collection_id,
+               created_at,
+               updated_at
+        FROM   geo_features
+        WHERE  collection_id = $1
+        ORDER  BY id`, collectionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var feats []*models.GeoJSONFeature
+	for rows.Next() {
+		f := new(models.GeoJSONFeature)
+		var props, geom []byte
+		if err := rows.Scan(&f.ID, &props, &geom,
+			&f.CollectionID, &f.CreatedAt, &f.UpdatedAt); err != nil {
+			return nil, err
+		}
+		f.Properties = models.JSONData(props)
+		f.Geometry = models.JSONData(geom)
+		feats = append(feats, f)
+	}
+	return feats, rows.Err()
+}
+
+func (r *GeoRepository) GetCollectionByID(
+	ctx context.Context, id int,
+) (*models.GeoJSONCollection, error) {
+
+	const q = `
+	SELECT id, name, description, srid,
+	       user_id, created_at, updated_at
+	FROM   geo_collections
+	WHERE  id = $1;`
+
+	col := new(models.GeoJSONCollection)
+	err := r.db.QueryRow(ctx, q, id).Scan(
+		&col.ID,
+		&col.Name,
+		&col.Description,
+		&col.SRID,
+		&col.UserID,
+		&col.CreatedAt,
+		&col.UpdatedAt,
+	)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return col, nil
+}
+
+func (r *GeoRepository) UpdateFeature(
+	ctx context.Context,
+	f *models.GeoJSONFeature,
+	srid int, // обычно defaultSRID
+) error {
+	props := f.Properties
+	geom := f.Geometry
+
+	res, err := r.db.Exec(ctx, `
+        UPDATE geo_features
+           SET properties = $1,
+               geometry   = ST_SetSRID(ST_GeomFromGeoJSON($2), $3),
+               updated_at = NOW()
+         WHERE id = $4
+           AND collection_id = $5;
+    `,
+		props,
+		geom,
+		srid,
+		f.ID,
+		f.CollectionID,
+	)
+	if err != nil {
+		return err
+	}
+	if res.RowsAffected() == 0 {
+		return errors.New("feature not found")
+	}
+	return nil
+}
+
+func (r *GeoRepository) GetFeatureByID(ctx context.Context, id int) (*models.GeoJSONFeature, error) {
+	const q = `
+	SELECT id,
+	       collection_id,
+	       properties,
+	       ST_AsGeoJSON(geometry) AS geom,          -- конвертируем в GeoJSON
+	       created_at,
+	       updated_at
+	FROM   geo_features
+	WHERE  id = $1;
+	`
+
+	var (
+		propsData []byte
+		geoJSON   string
+		f         models.GeoJSONFeature
+	)
+
+	err := r.db.QueryRow(ctx, q, id).Scan(
+		&f.ID,
+		&f.CollectionID,
+		&propsData,
+		&geoJSON,
+		&f.CreatedAt,
+		&f.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil // не найдено — сервис вернёт «фича не найдена»
+		}
+		return nil, err
+	}
+
+	f.Properties = models.JSONData(propsData)
+	f.Geometry = models.JSONData(geoJSON) // API‑слою отдаём уже GeoJSON
+
+	return &f, nil
+}
+
+// helper function to scan collections
+func (r *GeoRepository) scanCollections(
+	ctx context.Context, query string, args ...any,
+) ([]*models.GeoJSONCollection, error) {
+
+	rows, err := r.db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []*models.GeoJSONCollection
+	for rows.Next() {
+		c := new(models.GeoJSONCollection)
+		err = rows.Scan(
+			&c.ID,
+			&c.Name,
+			&c.Description,
+			&c.SRID,
+			&c.UserID,
+			&c.CreatedAt,
+			&c.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, c)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
+// AddFeaturesBulk выполняет серию INSERT в одном батче.
+func (r *GeoRepository) AddFeaturesBulk(
+	ctx context.Context,
+	features []*models.GeoJSONFeature,
+	srid int,
+) error {
+	// 1) Собираем batch
+	batch := &pgx.Batch{}
+	for _, f := range features {
+		props := json.RawMessage(`{}`)
+		if len(f.Properties) > 0 {
+			props = json.RawMessage(f.Properties)
+		}
+		batch.Queue(
+			`INSERT INTO geo_features
+                (properties, geometry, collection_id)
+             VALUES
+                ($1, ST_SetSRID(ST_GeomFromGeoJSON($2), $3), $4)
+             RETURNING id, created_at, updated_at;`,
+			props,
+			f.Geometry,
+			srid,
+			f.CollectionID,
+		)
+	}
+
+	// 2) Отправляем и читаем результаты
+	br := r.db.SendBatch(ctx, batch)
+	defer br.Close()
+
+	for _, f := range features {
+		// каждый QueryRow() читает результат одного INSERT
+		if err := br.QueryRow().Scan(&f.ID, &f.CreatedAt, &f.UpdatedAt); err != nil {
+			return err
+		}
 	}
 
 	return nil
 }
 
-func (r *GeoJSONRepository) GetFeatureByID(ctx context.Context, id int) (*models.GeoJSONFeature, error) {
-	feature := &models.GeoJSONFeature{}
-	var propertiesData, geometryData []byte
+func (r *GeoRepository) AddSingleFeature(
+	ctx context.Context,
+	f *models.GeoJSONFeature,
+	srid int,
+) error {
+	props := f.Properties
+	geom := f.Geometry
 
-	err := r.db.QueryRow(ctx,
-		`SELECT id, type, properties, geometry, collection_id, created_at, updated_at
-  FROM geo_json_features WHERE id = $1`, id).
-		Scan(&feature.ID, &feature.Type, &propertiesData, &geometryData,
-			&feature.CollectionID, &feature.CreatedAt, &feature.UpdatedAt)
-
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	feature.Properties = models.JSONData(propertiesData)
-	feature.Geometry = models.JSONData(geometryData)
-	return feature, nil
+	// ST_SetSRID(ST_GeomFromGeoJSON($2), $3) конвертит GeoJSON → geometry
+	err := r.db.QueryRow(ctx, `
+        INSERT INTO geo_features
+            (properties, geometry, collection_id)
+        VALUES
+            ($1,
+             ST_SetSRID(ST_GeomFromGeoJSON($2), $3),
+             $4)
+        RETURNING id, created_at, updated_at;
+    `,
+		props,
+		geom,
+		srid,
+		f.CollectionID,
+	).Scan(&f.ID, &f.CreatedAt, &f.UpdatedAt)
+	return err
 }

@@ -18,8 +18,8 @@ func main() {
 	userHandler := handlers.NewUserHandler(userService)
 	authService := service.NewAuthService(userRepo)
 	authHandler := handlers.NewAuthHandler(authService)
-	geoJSONRepo := repository.NewGeoJSONRepository(db.Pool)
-	geoJSONService := service.NewGeoJSONService(geoJSONRepo)
+	geoJSONRepo := repository.NewGeoRepository(db.Pool)
+	geoJSONService := service.NewGeoService(geoJSONRepo)
 	geoJSONHandler := handlers.NewGeoJSONHandler(geoJSONService)
 
 	router := routes.Router(userHandler, authHandler, geoJSONHandler)

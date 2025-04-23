@@ -35,10 +35,9 @@ func Router(
 
 	geojson := protected.Group("/geojson")
 	{
-		// Коллекции - только чтение для обычных пользователей
 		collections := geojson.Group("/collections")
 		{
-			collections.GET("", geoJSONHandler.GetCollections)
+			collections.GET("", geoJSONHandler.GetAllCollections)
 			collections.GET("/:id", geoJSONHandler.GetCollection)
 			collections.GET("/:id/export", geoJSONHandler.ExportGeoJSON)
 			collections.GET("/:id/features", geoJSONHandler.GetFeatures)
@@ -51,18 +50,15 @@ func Router(
 		admin.POST("/register", userHandler.Register)
 		admin.GET("/users", userHandler.GetUsers)
 		admin.GET("/users/:id", userHandler.GetUser)
-
 		adminGeoJSON := admin.Group("/geojson")
 		{
-			// Коллекции - администраторы могут создавать и удалять
 			adminCollections := adminGeoJSON.Group("/collections")
 			{
-				adminCollections.POST("", geoJSONHandler.UploadGeoJSON)
+				adminCollections.POST("", geoJSONHandler.UploadGeoJSONBulk)
 				adminCollections.DELETE("/:id", geoJSONHandler.DeleteCollection)
-				adminCollections.POST("/:id/features", geoJSONHandler.AddFeature)
-			}
+				adminCollections.POST("/:id/features", geoJSONHandler.AddSingleFeature)
 
-			// Фичи - администраторы могут обновлять и удалять
+			}
 			adminFeatures := adminGeoJSON.Group("/features")
 			{
 				adminFeatures.PUT("/:id", geoJSONHandler.UpdateFeature)

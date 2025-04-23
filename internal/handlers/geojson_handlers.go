@@ -9,50 +9,12 @@ import (
 )
 
 type GeoJSONHandler struct {
-	geoJSONService *service.GeoJSONService
+	geoJSONService *service.GeoService
 }
 
 // конструктор
-func NewGeoJSONHandler(geoJSONService *service.GeoJSONService) *GeoJSONHandler {
+func NewGeoJSONHandler(geoJSONService *service.GeoService) *GeoJSONHandler {
 	return &GeoJSONHandler{geoJSONService: geoJSONService}
-}
-
-// UploadGeoJSON загружает GeoJSON файл и создает новую коллекцию
-func (h *GeoJSONHandler) UploadGeoJSON(c *gin.Context) {
-	// Получаем ID пользователя из контекста (используя ключ как в middleware)
-	userID, _ := c.Get("user_id")
-	file, header, err := c.Request.FormFile("file")
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Файл не найден"})
-		return
-	}
-	defer file.Close()
-
-	name := c.PostForm("name")
-	if name == "" {
-		name = header.Filename
-	}
-	description := c.PostForm("description")
-
-	collection, err := h.geoJSONService.ImportGeoJSON(c.Request.Context(), file, name, description, userID.(int))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при импорте GeoJSON: " + err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusCreated, collection)
-}
-
-// GetCollections получает список коллекций пользователя
-func (h *GeoJSONHandler) GetCollections(c *gin.Context) {
-	userID, _ := c.Get("user_id")
-	collections, err := h.geoJSONService.GetCollectionsByUser(c.Request.Context(), userID.(int))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при получении коллекций: " + err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, collections)
 }
 
 // GetCollection получает коллекцию по ID
@@ -131,51 +93,63 @@ func (h *GeoJSONHandler) GetFeatures(c *gin.Context) {
 }
 
 // AddFeature добавляет новую фичу в коллекцию
-func (h *GeoJSONHandler) AddFeature(c *gin.Context) {
+func (h *GeoJSONHandler) AddSingleFeature(c *gin.Context) {
+	// Получаем ID коллекции из URL
+	cid, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "некорректный ID коллекции"})
+		return
+	}
+
 	var feature models.GeoJSONFeature
 	if err := c.ShouldBindJSON(&feature); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный формат данных"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный формат данных: " + err.Error()})
 		return
 	}
+	feature.CollectionID = cid
 
-	collectionID, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный ID коллекции"})
-		return
-	}
-	feature.CollectionID = collectionID
-
-	err = h.geoJSONService.AddFeature(c.Request.Context(), &feature)
-	if err != nil {
+	if err := h.geoJSONService.AddSingleFeature(c.Request.Context(), &feature); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при добавлении фичи: " + err.Error()})
 		return
 	}
-
 	c.JSON(http.StatusCreated, feature)
 }
 
 // UpdateFeature обновляет фичу
 func (h *GeoJSONHandler) UpdateFeature(c *gin.Context) {
-	var feature models.GeoJSONFeature
-	if err := c.ShouldBindJSON(&feature); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный формат данных"})
-		return
-	}
-
-	featureID, err := strconv.Atoi(c.Param("id"))
+	// 1) Парсим ID фичи из URL
+	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный ID фичи"})
 		return
 	}
-	feature.ID = featureID
 
-	err = h.geoJSONService.UpdateFeature(c.Request.Context(), &feature)
+	var input models.GeoJSONFeature
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный формат данных: " + err.Error()})
+		return
+	}
+	input.ID = id
+
+	existing, err := h.geoJSONService.GetFeatureByID(c.Request.Context(), id)
 	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка поиска фичи: " + err.Error()})
+		return
+	}
+	if existing == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Фича не найдена"})
+		return
+	}
+	input.CollectionID = existing.CollectionID
+
+	// 4) Выполняем обновление
+	if err := h.geoJSONService.UpdateFeature(c.Request.Context(), &input); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при обновлении фичи: " + err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, feature)
+	// 5) Отдаём обновлённую фичу (можно вернуть input или снова подгрузить из БД)
+	c.JSON(http.StatusOK, input)
 }
 
 // DeleteFeature удаляет фичу
@@ -193,4 +167,60 @@ func (h *GeoJSONHandler) DeleteFeature(c *gin.Context) {
 	}
 
 	c.Status(http.StatusNoContent)
+}
+
+// GetAllCollections получает все коллекции
+func (h *GeoJSONHandler) GetAllCollections(c *gin.Context) {
+	collections, err := h.geoJSONService.GetAllCollections(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при получении коллекций: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, collections)
+}
+
+func (h *GeoJSONHandler) UploadGeoJSONBulk(c *gin.Context) {
+	// 1) достаём файл
+	file, _, err := c.Request.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Файл не найден: " + err.Error()})
+		return
+	}
+	defer file.Close()
+
+	// 2) читаем метаданные
+	name := c.PostForm("name")
+	if name == "" {
+		name = "unnamed_collection"
+	}
+	description := c.PostForm("description")
+
+	// 3) получаем user_id из контекста (middleware)
+	uidIfc, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Неавторизованный запрос"})
+		return
+	}
+	userID, ok := uidIfc.(int)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Неверный формат user_id"})
+		return
+	}
+
+	// 4) вызываем сервис bulk‑импорта
+	col, err := h.geoJSONService.ImportGeoJSONBulk(
+		c.Request.Context(),
+		file,
+		name,
+		description,
+		userID,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка bulk‑импорта: " + err.Error()})
+		return
+	}
+
+	// 5) возвращаем созданную коллекцию (ID, timestamps)
+	c.JSON(http.StatusCreated, col)
 }
