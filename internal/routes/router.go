@@ -4,6 +4,7 @@ import (
 	"Datapolis/internal/handlers"
 	"Datapolis/internal/middleware"
 	"github.com/gin-contrib/cors"
+	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"time"
 )
@@ -14,6 +15,7 @@ func Router(
 	geoJSONHandler *handlers.GeoJSONHandler) *gin.Engine {
 
 	router := gin.Default()
+	router.Use(gzip.Gzip(gzip.DefaultCompression))
 
 	router.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"http://localhost:3000"},

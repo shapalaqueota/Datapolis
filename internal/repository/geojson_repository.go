@@ -263,7 +263,6 @@ func (r *GeoRepository) AddFeaturesBulk(
 	features []*models.GeoJSONFeature,
 	srid int,
 ) error {
-	// 1) Собираем batch
 	batch := &pgx.Batch{}
 	for _, f := range features {
 		props := json.RawMessage(`{}`)
@@ -283,12 +282,10 @@ func (r *GeoRepository) AddFeaturesBulk(
 		)
 	}
 
-	// 2) Отправляем и читаем результаты
 	br := r.db.SendBatch(ctx, batch)
 	defer br.Close()
 
 	for _, f := range features {
-		// каждый QueryRow() читает результат одного INSERT
 		if err := br.QueryRow().Scan(&f.ID, &f.CreatedAt, &f.UpdatedAt); err != nil {
 			return err
 		}
