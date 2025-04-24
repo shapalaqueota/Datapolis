@@ -26,7 +26,7 @@ func Router(
 		MaxAge:           12 * time.Hour,
 	}))
 
-	router.POST("/login", authHandler.Login)
+	router.POST("/sign-in", authHandler.Login)
 	router.POST("/refresh", authHandler.RefreshToken)
 
 	protected := router.Group("/")
@@ -49,7 +49,7 @@ func Router(
 	admin := protected.Group("/admin")
 	admin.Use(middleware.AuthMiddleware(), middleware.AdminMiddleware())
 	{
-		admin.POST("/register", userHandler.Register)
+		admin.POST("/sign-up", userHandler.Register)
 		admin.GET("/users", userHandler.GetUsers)
 		admin.GET("/users/:id", userHandler.GetUser)
 		adminGeoJSON := admin.Group("/geojson")
