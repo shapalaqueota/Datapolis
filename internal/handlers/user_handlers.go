@@ -148,11 +148,13 @@ func (h *UserHandler) GetUsers(c *gin.Context) {
 	result := make([]struct {
 		ID       int    `json:"id"`
 		Username string `json:"username"`
+		Role     string `json:"role"`
 	}, len(users))
 
 	for i, user := range users {
 		result[i].ID = user.ID
 		result[i].Username = user.Username
+		result[i].Role = user.Role
 	}
 
 	c.JSON(http.StatusOK, result)
