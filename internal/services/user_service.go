@@ -95,12 +95,11 @@ func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*a
 
 	refreshExpiresIn := int64(time.Until(claims.ExpiresAt.Time).Seconds())
 	if refreshExpiresIn < 0 {
-		refreshExpiresIn = 0 // На случай, если токен почти истек
+		refreshExpiresIn = 0
 	}
 
 	return &auth.TokenPair{
 		AccessToken:      accessToken,
-		RefreshToken:     refreshToken,
 		ExpiresIn:        expiresIn,
 		RefreshExpiresIn: refreshExpiresIn,
 	}, nil

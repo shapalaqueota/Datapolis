@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 )
 
 type UserHandler struct {
@@ -102,14 +103,12 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message":            "Токен обновлен",
 		"token":              tokenPair.AccessToken,
-		"refresh_token":      tokenPair.RefreshToken,
 		"expires_in":         tokenPair.ExpiresIn,
 		"refresh_expires_in": tokenPair.RefreshExpiresIn,
 	})
 }
 
 func (h *UserHandler) GetUser(c *gin.Context) {
-	// Получаем ID пользователя из URL параметров
 	userID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный ID пользователя"})
@@ -122,22 +121,39 @@ func (h *UserHandler) GetUser(c *gin.Context) {
 		return
 	}
 
-	user.Password = ""
-	c.JSON(http.StatusOK, user)
+	result := struct {
+		ID        int       `json:"id"`
+		Username  string    `json:"username"`
+		Email     string    `json:"email"`
+		Role      string    `json:"role"`
+		CreatedAt time.Time `json:"created_at"`
+	}{
+		ID:        user.ID,
+		Username:  user.Username,
+		Email:     user.Email,
+		Role:      user.Role,
+		CreatedAt: user.CreatedAt,
+	}
+
+	c.JSON(http.StatusOK, result)
 }
 
-// GetUsers получает список всех пользователей
 func (h *UserHandler) GetUsers(c *gin.Context) {
-	// Получаем всех пользователей из сервиса
 	users, err := h.userService.GetAllUsers(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	for _, user := range users {
-		user.Password = ""
+	result := make([]struct {
+		ID       int    `json:"id"`
+		Username string `json:"username"`
+	}, len(users))
+
+	for i, user := range users {
+		result[i].ID = user.ID
+		result[i].Username = user.Username
 	}
 
-	c.JSON(http.StatusOK, users)
+	c.JSON(http.StatusOK, result)
 }
