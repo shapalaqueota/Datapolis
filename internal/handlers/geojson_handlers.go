@@ -39,24 +39,6 @@ func (h *GeoJSONHandler) GetCollection(c *gin.Context) {
 	c.JSON(http.StatusOK, collection)
 }
 
-// ExportGeoJSON экспортирует коллекцию в GeoJSON формат
-func (h *GeoJSONHandler) ExportGeoJSON(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный ID"})
-		return
-	}
-
-	geoJSON, err := h.geoJSONService.ExportGeoJSON(c.Request.Context(), id)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при экспорте GeoJSON: " + err.Error()})
-		return
-	}
-
-	c.Header("Content-Type", "application/json")
-	c.Writer.Write(geoJSON)
-}
-
 // DeleteCollection удаляет коллекцию
 func (h *GeoJSONHandler) DeleteCollection(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
@@ -83,13 +65,19 @@ func (h *GeoJSONHandler) GetFeatures(c *gin.Context) {
 		return
 	}
 
-	features, err := h.geoJSONService.GetFeatures(c.Request.Context(), id)
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "100"))
+
+	features, pagination, err := h.geoJSONService.GetFeatures(c.Request.Context(), id, page, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при получении фич: " + err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, features)
+	c.JSON(http.StatusOK, gin.H{
+		"data":       features,
+		"pagination": pagination,
+	})
 }
 
 // AddFeature добавляет новую фичу в коллекцию

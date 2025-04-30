@@ -41,7 +41,6 @@ func Router(
 		{
 			collections.GET("", geoJSONHandler.GetAllCollections)
 			collections.GET("/:id", geoJSONHandler.GetCollection)
-			collections.GET("/:id/export", geoJSONHandler.ExportGeoJSON)
 			collections.GET("/:id/features", geoJSONHandler.GetFeatures)
 		}
 	}

@@ -24,9 +24,9 @@ func main() {
 
 	router := routes.Router(userHandler, authHandler, geoJSONHandler)
 
-	port := os.Getenv("PORT") // ← Heroku сам задаёт эту переменную
+	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8080" // ← это только для запуска локально
+		port = "8080"
 	}
 	router.Run(":" + port)
 }

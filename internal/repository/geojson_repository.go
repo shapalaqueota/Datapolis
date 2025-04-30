@@ -90,8 +90,19 @@ func (r *GeoRepository) DeleteFeature(ctx context.Context, id int) error {
 }
 
 func (r *GeoRepository) GetFeaturesByCollectionID(
-	ctx context.Context, collectionID int,
+	ctx context.Context,
+	collectionID int,
+	pagination *models.Pagination,
 ) ([]*models.GeoJSONFeature, error) {
+	// Получаем общее количество фич
+	var total int
+	err := r.db.QueryRow(ctx,
+		"SELECT COUNT(*) FROM geo_features WHERE collection_id = $1",
+		collectionID).Scan(&total)
+	if err != nil {
+		return nil, err
+	}
+	pagination.SetTotal(total)
 
 	rows, err := r.db.Query(ctx, `
         SELECT id,
@@ -102,7 +113,9 @@ func (r *GeoRepository) GetFeaturesByCollectionID(
                updated_at
         FROM   geo_features
         WHERE  collection_id = $1
-        ORDER  BY id`, collectionID)
+        ORDER  BY id
+        LIMIT $2 OFFSET $3`,
+		collectionID, pagination.Limit, pagination.Offset())
 	if err != nil {
 		return nil, err
 	}
