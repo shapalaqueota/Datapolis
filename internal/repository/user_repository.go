@@ -105,3 +105,28 @@ func (r *UserRepository) GetAll(ctx context.Context) ([]*models.User, error) {
 
 	return users, nil
 }
+
+//-- Update user ----------------------------------------
+
+func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE users 
+         SET username = $1, email = $2, role = $3, is_active = $4, updated_at = NOW()
+         WHERE id = $5`,
+		user.Username, user.Email, user.Role, user.IsActive, user.ID)
+	return err
+}
+
+func (r *UserRepository) UpdatePassword(ctx context.Context, userID int, newPassword string) error {
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+
+	_, err = r.db.Exec(ctx,
+		`UPDATE users 
+         SET password = $1, updated_at = NOW()
+         WHERE id = $2`,
+		string(hashedPassword), userID)
+	return err
+}

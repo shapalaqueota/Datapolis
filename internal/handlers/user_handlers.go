@@ -36,6 +36,17 @@ type RefreshRequest struct {
 	RefreshToken string `json:"refresh_token" binding:"required"`
 }
 
+type UpdateUserRequest struct {
+	Username string `json:"username" binding:"required"`
+	Email    string `json:"email" binding:"required,email"`
+	Role     string `json:"role,omitempty"`
+	IsActive bool   `json:"isActive"`
+}
+
+type UpdatePasswordRequest struct {
+	NewPassword string `json:"newPassword" binding:"required"`
+}
+
 func (h *UserHandler) Register(c *gin.Context) {
 	var user models.User
 	if err := c.ShouldBindJSON(&user); err != nil {
@@ -158,4 +169,107 @@ func (h *UserHandler) GetUsers(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, result)
+}
+
+//--- UpdateUser ---//
+
+func (h *UserHandler) UpdateUser(c *gin.Context) {
+	userID, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный ID пользователя"})
+		return
+	}
+
+	updaterID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Пользователь не авторизован"})
+		return
+	}
+
+	updaterIDInt, ok := updaterID.(int)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка получения ID пользователя"})
+		return
+	}
+
+	var req UpdateUserRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	user := &models.User{
+		ID:       userID,
+		Username: req.Username,
+		Email:    req.Email,
+		Role:     req.Role,
+		IsActive: req.IsActive,
+	}
+
+	err = h.userService.UpdateUser(c.Request.Context(), updaterIDInt, user)
+	if err != nil {
+		handleUserError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Пользователь успешно обновлен"})
+}
+
+func (h *UserHandler) UpdatePassword(c *gin.Context) {
+	userID, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный ID пользователя"})
+		return
+	}
+
+	updaterID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Пользователь не авторизован"})
+		return
+	}
+
+	updaterIDInt, ok := updaterID.(int)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка получения ID пользователя"})
+		return
+	}
+
+	var req UpdatePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	err = h.userService.UpdatePassword(c.Request.Context(), updaterIDInt, userID, req.NewPassword)
+	if err != nil {
+		if err.Error() == "пароль должен содержать не менее 6 символов" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		handleUserError(c, err)
+		return
+	}
+
+	err = h.userService.UpdatePassword(c.Request.Context(), updaterIDInt, userID, req.NewPassword)
+	if err != nil {
+		handleUserError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Пароль успешно обновлен"})
+}
+
+func handleUserError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, service.ErrUserExists):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+	case errors.Is(err, service.ErrUserNotFound):
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+	case errors.Is(err, service.ErrNoPermission):
+		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+	case errors.Is(err, service.ErrCannotDeactivateSelf):
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	default:
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Внутренняя ошибка сервера"})
+	}
 }

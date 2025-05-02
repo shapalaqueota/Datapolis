@@ -41,7 +41,6 @@ func Router(
 		{
 			collections.GET("", geoJSONHandler.GetAllCollections)
 			collections.GET("/:id", geoJSONHandler.GetCollection)
-			collections.GET("/:id/export", geoJSONHandler.ExportGeoJSON)
 			collections.GET("/:id/features", geoJSONHandler.GetFeatures)
 		}
 	}
@@ -52,6 +51,9 @@ func Router(
 		admin.POST("/sign-up", userHandler.Register)
 		admin.GET("/users", userHandler.GetUsers)
 		admin.GET("/users/:id", userHandler.GetUser)
+		admin.PUT("/users/update/:id", userHandler.UpdateUser)
+		admin.PUT("/users/update-password/:id", userHandler.UpdatePassword)
+
 		adminGeoJSON := admin.Group("/geojson")
 		{
 			adminCollections := adminGeoJSON.Group("/collections")

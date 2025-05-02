@@ -67,7 +67,9 @@ func createTables() error {
 	    password   VARCHAR(255) NOT NULL,
 	    email      VARCHAR(255) UNIQUE NOT NULL,
 	    role       VARCHAR(50)  DEFAULT 'user',
-	    created_at TIMESTAMPTZ  DEFAULT NOW()
+	    is_active  BOOLEAN     DEFAULT TRUE,
+	    created_at TIMESTAMPTZ  DEFAULT NOW(),
+	    updated_at TIMESTAMPTZ  DEFAULT NOW()
 	);`); err != nil {
 		return fmt.Errorf("users: %w", err)
 	}

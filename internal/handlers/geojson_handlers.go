@@ -39,24 +39,6 @@ func (h *GeoJSONHandler) GetCollection(c *gin.Context) {
 	c.JSON(http.StatusOK, collection)
 }
 
-// ExportGeoJSON экспортирует коллекцию в GeoJSON формат
-func (h *GeoJSONHandler) ExportGeoJSON(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный ID"})
-		return
-	}
-
-	geoJSON, err := h.geoJSONService.ExportGeoJSON(c.Request.Context(), id)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при экспорте GeoJSON: " + err.Error()})
-		return
-	}
-
-	c.Header("Content-Type", "application/json")
-	c.Writer.Write(geoJSON)
-}
-
 // DeleteCollection удаляет коллекцию
 func (h *GeoJSONHandler) DeleteCollection(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
@@ -181,7 +163,6 @@ func (h *GeoJSONHandler) GetAllCollections(c *gin.Context) {
 }
 
 func (h *GeoJSONHandler) UploadGeoJSONBulk(c *gin.Context) {
-	// 1) достаём файл
 	file, _, err := c.Request.FormFile("file")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Файл не найден: " + err.Error()})
@@ -189,14 +170,12 @@ func (h *GeoJSONHandler) UploadGeoJSONBulk(c *gin.Context) {
 	}
 	defer file.Close()
 
-	// 2) читаем метаданные
 	name := c.PostForm("name")
 	if name == "" {
 		name = "unnamed_collection"
 	}
 	description := c.PostForm("description")
 
-	// 3) получаем user_id из контекста (middleware)
 	uidIfc, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Неавторизованный запрос"})
@@ -208,7 +187,6 @@ func (h *GeoJSONHandler) UploadGeoJSONBulk(c *gin.Context) {
 		return
 	}
 
-	// 4) вызываем сервис bulk‑импорта
 	col, err := h.geoJSONService.ImportGeoJSONBulk(
 		c.Request.Context(),
 		file,
@@ -221,6 +199,5 @@ func (h *GeoJSONHandler) UploadGeoJSONBulk(c *gin.Context) {
 		return
 	}
 
-	// 5) возвращаем созданную коллекцию (ID, timestamps)
 	c.JSON(http.StatusCreated, col)
 }
