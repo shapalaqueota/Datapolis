@@ -1,13 +1,15 @@
 package service
 
 import (
-	"Datapolis/internal/models"
-	"Datapolis/internal/repository"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
+
+	"Datapolis/internal/models"
+	"Datapolis/internal/repository"
 )
 
 const srid4326 = 4326
@@ -23,20 +25,48 @@ func (s *GeoService) GetCollection(ctx context.Context, id int) (*models.GeoJSON
 	return s.repo.GetCollectionByID(ctx, id)
 }
 
+func (s *GeoService) ExportGeoJSON(ctx context.Context, collectionID int) ([]byte, error) {
+	col, err := s.repo.GetCollectionByID(ctx, collectionID)
+	if err != nil {
+		return nil, err
+	}
+	if col == nil {
+		return nil, errors.New("collection not found")
+	}
+
+	feats, err := s.repo.FeaturesByCollection(ctx, collectionID)
+	if err != nil {
+		return nil, err
+	}
+
+	out := map[string]any{
+		"type": "FeatureCollection",
+		"name": col.Name,
+		"crs": map[string]any{
+			"type":       "name",
+			"properties": map[string]any{"name": "EPSG:" + strconv.Itoa(col.SRID)},
+		},
+	}
+	flist := make([]map[string]any, 0, len(feats))
+	for _, f := range feats {
+		flist = append(flist, map[string]any{
+			"type":       "Feature",
+			"properties": json.RawMessage(f.Properties),
+			"geometry":   json.RawMessage(f.Geometry),
+		})
+	}
+	out["features"] = flist
+	return json.Marshal(out)
+}
+
 // DeleteCollection удаляет коллекцию
 func (s *GeoService) DeleteCollection(ctx context.Context, collectionID, userID int) error {
 	return s.repo.DeleteCollection(ctx, collectionID, userID)
 }
 
 // GetFeatures получает все фичи коллекции
-func (s *GeoService) GetFeatures(ctx context.Context, collectionID int, page, limit int) ([]*models.GeoJSONFeature, *models.Pagination, error) {
-	pagination := models.NewPagination(page, limit)
-	features, err := s.repo.GetFeaturesByCollectionID(ctx, collectionID, pagination)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return features, pagination, nil
+func (s *GeoService) GetFeatures(ctx context.Context, collectionID int) ([]*models.GeoJSONFeature, error) {
+	return s.repo.GetFeaturesByCollectionID(ctx, collectionID)
 }
 
 // AddSingleFeature добавляет новую фичу в коллекцию
