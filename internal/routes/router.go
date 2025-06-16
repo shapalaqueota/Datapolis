@@ -3,10 +3,11 @@ package routes
 import (
 	"Datapolis/internal/handlers"
 	"Datapolis/internal/middleware"
+	"time"
+
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
-	"time"
 )
 
 func Router(
@@ -49,6 +50,7 @@ func Router(
 	admin.Use(middleware.AuthMiddleware(), middleware.AdminMiddleware())
 	{
 		admin.POST("/sign-up", userHandler.Register)
+		admin.POST("/register", userHandler.Register) // Added this line to support both routes
 		admin.GET("/users", userHandler.GetUsers)
 		admin.GET("/users/:id", userHandler.GetUser)
 		admin.PUT("/users/update/:id", userHandler.UpdateUser)
